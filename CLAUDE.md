@@ -38,8 +38,8 @@ meson compile -C build/esp32s3-qemu/meson
 
 # Zephyr (requires Zephyr SDK)
 python3 scripts/gen-zephyr-cross.py qemu_cortex_a9
-meson setup build/zephyr-cortex-a9-qemu/meson --cross-file build/zephyr-cortex-a9-qemu/cross.ini
-meson compile -C build/zephyr-cortex-a9-qemu/meson
+meson setup build/zephyr-qemu_cortex_a9/meson --cross-file build/zephyr-qemu_cortex_a9/cross.ini
+meson compile -C build/zephyr-qemu_cortex_a9/meson
 ```
 
 ## Configuration

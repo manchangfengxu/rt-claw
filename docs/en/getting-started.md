@@ -305,7 +305,7 @@ make run-zephyr-cortex-m3-qemu
 ```
 
 The Cortex-M3 target uses the standard `qemu-system-arm` with the
-`mps2_an385` machine, which is included in the system QEMU package.
+`lm3s6965evb` machine, which is included in the system QEMU package.
 
 > **Note:** Zephyr has native HTTPS support via mbedTLS -- no
 > `scripts/api-proxy.py` proxy is needed for AI API requests.

@@ -80,8 +80,8 @@ ESP32-S3 WiFi support adapted from [MimiClaw](https://github.com/memovai/mimicla
 | ESP32-S3 | QEMU, real hardware | FreeRTOS (ESP-IDF) | Meson + CMake | Verified |
 | Zynq-A9 | QEMU | FreeRTOS (standalone) | Meson (full firmware) | Verified |
 | vexpress-a9 | QEMU | RT-Thread | Meson + SCons | Verified |
-| Zephyr Cortex-A9 | QEMU (qemu_cortex_a9) | Zephyr v4.4.0 | Meson + West | Verified |
-| Zephyr Cortex-M3 | QEMU (qemu_cortex_m3) | Zephyr v4.4.0 | Meson + West | Verified |
+| Zephyr Cortex-A9 | QEMU (qemu_cortex_a9) | Zephyr v4.4.0 | CMake + Ninja | Verified |
+| Zephyr Cortex-M3 | QEMU (qemu_cortex_m3) | Zephyr v4.4.0 | CMake + Ninja | Verified |
 | Linux | Native (x86_64, aarch64) | Linux (pthreads) | Meson | Verified |
 
 ## Quick Start
