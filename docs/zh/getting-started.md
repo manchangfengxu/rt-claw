@@ -292,8 +292,9 @@ make run-zephyr-cortex-a9-qemu GDB=1   # 调试模式（GDB 端口 1234）
 > 标准 `qemu-system-arm` 不支持此目标。
 > 安装地址：<https://github.com/Xilinx/qemu>
 
-> **HTTPS 支持：** Zephyr 平台通过 mbedTLS 原生支持 HTTPS，无需启动
-> `scripts/api-proxy.py` 代理即可直接调用 AI API。
+> **HTTPS 支持：** Zephyr 包含 mbedTLS 用于原生 HTTPS，但 TLS Kconfig
+> 默认尚未启用。在此之前，请使用 `scripts/api-proxy.py` 代理进行
+> AI API HTTPS 请求，与 vexpress-a9 和 Zynq-A9 相同。
 
 ## Linux 原生平台
 
