@@ -22,6 +22,7 @@ LOG_MODULE_REGISTER(claw_net, LOG_LEVEL_INF);
 
 #define HTTP_TIMEOUT_MS     30000
 #define MAX_HEADERS         16
+#define HDR_BUF_SIZE        512
 #define RECV_BUF_SIZE       2048
 
 /* ---------- URL parser ---------- */
@@ -241,7 +242,7 @@ static int do_request(enum http_method method,
      * Each pair is: "Header-Name: value\r\n"
      */
     const char *hdr_strs[MAX_HEADERS + 1];
-    char hdr_buf[MAX_HEADERS][128];
+    char hdr_buf[MAX_HEADERS][HDR_BUF_SIZE];
     int hdr_count = 0;
 
     for (int i = 0;

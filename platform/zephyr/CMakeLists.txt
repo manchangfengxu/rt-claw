@@ -7,13 +7,20 @@ set(RTCLAW_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..)
 set(RTCLAW_BOARD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/boards/${BOARD})
 
 # --- Generated rt-claw config (equivalent to Meson claw_gen_config.h) ---
-set(RTCLAW_AI_API_KEY "$ENV{RTCLAW_AI_API_KEY}")
-set(RTCLAW_AI_API_URL "$ENV{RTCLAW_AI_API_URL}")
-set(RTCLAW_AI_MODEL "$ENV{RTCLAW_AI_MODEL}")
+# Only define macros when environment variables are non-empty,
+# so claw_config.h defaults are preserved.
+if(NOT "$ENV{RTCLAW_AI_API_KEY}" STREQUAL "")
+    set(CONFIG_RTCLAW_AI_API_KEY "$ENV{RTCLAW_AI_API_KEY}")
+endif()
+if(NOT "$ENV{RTCLAW_AI_API_URL}" STREQUAL "")
+    set(CONFIG_RTCLAW_AI_API_URL "$ENV{RTCLAW_AI_API_URL}")
+endif()
+if(NOT "$ENV{RTCLAW_AI_MODEL}" STREQUAL "")
+    set(CONFIG_RTCLAW_AI_MODEL "$ENV{RTCLAW_AI_MODEL}")
+endif()
 configure_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/claw_gen_config.h.cmake
     ${CMAKE_BINARY_DIR}/claw_gen_config.h
-    @ONLY
 )
 
 # rt-claw include paths

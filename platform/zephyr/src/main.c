@@ -10,12 +10,14 @@
 
 #include "claw/init.h"
 #include "osal/claw_kv.h"
+#include "claw/shell/shell_commands.h"
 
 LOG_MODULE_REGISTER(rtclaw_main, LOG_LEVEL_INF);
 
 int main(void)
 {
     claw_kv_init();
+    shell_nvs_config_load();
     claw_init();
 
     /*
