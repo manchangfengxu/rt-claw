@@ -4,7 +4,8 @@
  *
  * Zephyr Shell integration for rt-claw.
  * Uses shell_set_bypass() to intercept raw input, then dispatches
- * through rt-claw's shell_dispatch() for slash commands and AI fallback.
+ * through rt-claw's command tables for slash commands.
+ * Non-command text is forwarded to the AI engine.
  */
 
 #include <zephyr/kernel.h>
@@ -13,9 +14,8 @@
 #include <zephyr/logging/log.h>
 
 /*
- * Zephyr and rt-claw both define SHELL_CMD. Zephyr's is for its
- * command tree; rt-claw's is a convenience initializer for shell_cmd_t.
- * We use Zephyr Shell in bypass mode so we don't need Zephyr's macro.
+ * Zephyr and rt-claw both define SHELL_CMD.
+ * We use Zephyr Shell in bypass mode, so undef Zephyr's macro.
  */
 #undef SHELL_CMD
 
@@ -24,42 +24,104 @@
 #include "claw/shell/shell_cmd.h"
 #include "claw/shell/shell_commands.h"
 #include "platform/board.h"
+#include "claw_config.h"
 
 #include <stdio.h>
 #include <string.h>
 
 LOG_MODULE_REGISTER(rtclaw_shell, LOG_LEVEL_INF);
 
-static const struct shell *s_shell_ptr;
+/* Forward declaration */
+extern int ai_chat(const char *input, int channel);
 
-/* ---------- shell bypass handler ---------- */
+/* AI channel for shell input */
+#ifndef AI_CHANNEL_SHELL
+#define AI_CHANNEL_SHELL    0
+#endif
 
-static void process_line(const struct shell *sh, char *line)
+/* ---------- built-in commands ---------- */
+
+static void cmd_help(int argc, char **argv)
 {
-    int argc;
-    char *argv[16];
+    (void)argc;
+    (void)argv;
 
-    argc = shell_tokenize(line, argv, 16);
-    if (argc == 0) {
-        return;
-    }
-
+    int common_count = shell_common_command_count();
     int board_count = 0;
     const shell_cmd_t *board_cmds =
         board_platform_commands(&board_count);
 
-    if (shell_dispatch(board_cmds, board_count, argc, argv)) {
-        return;
+    claw_printf("Available commands:\n");
+    shell_print_help(shell_common_commands, common_count);
+    if (board_count > 0) {
+        shell_print_help(board_cmds, board_count);
     }
-
-    if (shell_dispatch(shell_common_commands,
-                       shell_common_command_count(),
-                       argc, argv)) {
-        return;
-    }
-
-    claw_printf("Unknown command: %s\n", argv[0]);
 }
+
+static void cmd_version(int argc, char **argv)
+{
+    (void)argc;
+    (void)argv;
+    claw_printf("RT-Claw v%s (Zephyr)\n", "0.2.0");
+}
+
+static const shell_cmd_t s_builtin_cmds[] = {
+    SHELL_CMD("/help",    cmd_help,    "Show available commands"),
+    SHELL_CMD("/version", cmd_version, "Show firmware version"),
+};
+
+#define BUILTIN_COUNT  (sizeof(s_builtin_cmds) / sizeof(s_builtin_cmds[0]))
+
+/* ---------- line processing ---------- */
+
+static void process_line(char *line)
+{
+    if (line[0] == '\0') {
+        return;
+    }
+
+    /* Slash commands: dispatch through command tables */
+    if (line[0] == '/') {
+        int argc;
+        char *argv[16];
+
+        argc = shell_tokenize(line, argv, 16);
+        if (argc == 0) {
+            return;
+        }
+
+        if (shell_dispatch(s_builtin_cmds, BUILTIN_COUNT, argc, argv)) {
+            return;
+        }
+
+        int board_count = 0;
+        const shell_cmd_t *board_cmds =
+            board_platform_commands(&board_count);
+
+        if (shell_dispatch(board_cmds, board_count, argc, argv)) {
+            return;
+        }
+
+        if (shell_dispatch(shell_common_commands,
+                           shell_common_command_count(),
+                           argc, argv)) {
+            return;
+        }
+
+        claw_printf("Unknown command: %s\n", argv[0]);
+        return;
+    }
+
+    /* Non-command text: forward to AI engine */
+    int ret = ai_chat(line, AI_CHANNEL_SHELL);
+
+    if (ret != 0) {
+        claw_printf("AI error: %d (check API key with /ai_status)\n",
+                    ret);
+    }
+}
+
+/* ---------- shell bypass handler ---------- */
 
 static void shell_bypass_cb(const struct shell *sh,
                              uint8_t *data, size_t len,
@@ -68,6 +130,7 @@ static void shell_bypass_cb(const struct shell *sh,
     static char line_buf[256];
     static size_t line_pos;
 
+    (void)sh;
     (void)user_data;
 
     for (size_t i = 0; i < len; i++) {
@@ -81,7 +144,7 @@ static void shell_bypass_cb(const struct shell *sh,
             line_buf[line_pos] = '\0';
             printk("\n");
 
-            process_line(sh, line_buf);
+            process_line(line_buf);
 
             line_pos = 0;
             printk("rt-claw> ");
@@ -101,13 +164,14 @@ static void shell_bypass_cb(const struct shell *sh,
 
 static int rtclaw_shell_init(void)
 {
-    s_shell_ptr = shell_backend_uart_get_ptr();
-    if (!s_shell_ptr) {
+    const struct shell *sh = shell_backend_uart_get_ptr();
+
+    if (!sh) {
         LOG_ERR("No UART shell backend");
         return -1;
     }
 
-    shell_set_bypass(s_shell_ptr, shell_bypass_cb, NULL);
+    shell_set_bypass(sh, shell_bypass_cb, NULL);
     printk("rt-claw> ");
     return 0;
 }

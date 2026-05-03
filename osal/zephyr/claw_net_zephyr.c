@@ -114,7 +114,7 @@ static int response_cb(struct http_response *rsp,
 
     ctx->http_status = rsp->http_status_code;
 
-    if (rsp->body_frag_len > 0 && ctx->resp_buf) {
+    if (rsp->body_frag_len > 0 && ctx->resp_buf && ctx->resp_size > 1) {
         size_t avail = 0;
 
         if (ctx->resp_len < ctx->resp_size - 1) {
@@ -137,12 +137,18 @@ static int response_cb(struct http_response *rsp,
 
 /* ---------- socket helpers ---------- */
 
+#ifdef CONFIG_NET_SOCKETS_SOCKOPT_TLS
+#include <zephyr/net/tls_credentials.h>
+#define TLS_SEC_TAG  1
+#endif
+
 static int create_and_connect(const struct parsed_url *pu)
 {
     struct zsock_addrinfo hints;
     struct zsock_addrinfo *res = NULL;
     int sock = -1;
     int ret;
+    int proto;
 
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_INET;
@@ -154,13 +160,45 @@ static int create_and_connect(const struct parsed_url *pu)
         return -1;
     }
 
-    sock = zsock_socket(res->ai_family, SOCK_STREAM, IPPROTO_TCP);
+#ifdef CONFIG_NET_SOCKETS_SOCKOPT_TLS
+    proto = pu->is_https ? IPPROTO_TLS_1_2 : IPPROTO_TCP;
+#else
+    proto = IPPROTO_TCP;
+    if (pu->is_https) {
+        LOG_WRN("HTTPS not available (TLS not configured)");
+    }
+#endif
 
+    sock = zsock_socket(res->ai_family, SOCK_STREAM, proto);
     if (sock < 0) {
         LOG_ERR("Socket create failed: %d", errno);
         zsock_freeaddrinfo(res);
         return -1;
     }
+
+#ifdef CONFIG_NET_SOCKETS_SOCKOPT_TLS
+    if (pu->is_https) {
+        sec_tag_t sec_tags[] = { TLS_SEC_TAG };
+
+        ret = zsock_setsockopt(sock, SOL_TLS, TLS_SEC_TAG_LIST,
+                               sec_tags, sizeof(sec_tags));
+        if (ret < 0) {
+            LOG_ERR("TLS_SEC_TAG_LIST failed: %d", errno);
+            zsock_close(sock);
+            zsock_freeaddrinfo(res);
+            return -1;
+        }
+
+        ret = zsock_setsockopt(sock, SOL_TLS, TLS_HOSTNAME,
+                               pu->host, strlen(pu->host));
+        if (ret < 0) {
+            LOG_ERR("TLS_HOSTNAME failed: %d", errno);
+            zsock_close(sock);
+            zsock_freeaddrinfo(res);
+            return -1;
+        }
+    }
+#endif
 
     ret = zsock_connect(sock, res->ai_addr, res->ai_addrlen);
     zsock_freeaddrinfo(res);

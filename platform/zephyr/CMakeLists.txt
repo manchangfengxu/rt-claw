@@ -14,18 +14,23 @@ target_include_directories(app PRIVATE
     ${RTCLAW_ROOT}/vendor/lib/cjson
 )
 
-# Zephyr platform: disable IM, OTA, swarm; enable core + AI + net + KV
+# Zephyr first-stage feature profile:
+#   enabled:  AI, net, KV, system tool, net tool, sched
+#   disabled: Feishu, Telegram, Swarm, OTA, GPIO, LCD, audio, mouse, script
 target_compile_definitions(app PRIVATE
     CLAW_PLATFORM_ZEPHYR
+    CONFIG_RTCLAW_SCHED_ENABLE
+    CONFIG_RTCLAW_TOOL_SYSTEM
+    CONFIG_RTCLAW_TOOL_NET
+    CONFIG_RTCLAW_TOOL_SCHED
 )
 
-# Compile options for rt-claw C99 code within Zephyr's c17 build
 target_compile_options(app PRIVATE
     -std=gnu99
     -Wno-double-promotion
 )
 
-# --- rt-claw core sources ---
+# --- rt-claw core ---
 target_sources(app PRIVATE
     ${RTCLAW_ROOT}/claw/init.c
     ${RTCLAW_ROOT}/claw/core/errno.c
@@ -35,45 +40,46 @@ target_sources(app PRIVATE
     ${RTCLAW_ROOT}/claw/core/tool.c
 )
 
-# --- rt-claw services ---
+# --- rt-claw services (first-stage only) ---
 target_sources(app PRIVATE
     ${RTCLAW_ROOT}/claw/services/gateway.c
     ${RTCLAW_ROOT}/claw/services/sched.c
     ${RTCLAW_ROOT}/claw/services/ai/ai_engine.c
     ${RTCLAW_ROOT}/claw/services/ai/ai_memory.c
     ${RTCLAW_ROOT}/claw/services/ai/ai_skill.c
-    ${RTCLAW_ROOT}/claw/services/im/im_util.c
-    ${RTCLAW_ROOT}/claw/services/im/feishu.c
-    ${RTCLAW_ROOT}/claw/services/im/telegram.c
     ${RTCLAW_ROOT}/claw/services/net/net_service.c
-    ${RTCLAW_ROOT}/claw/services/swarm/swarm.c
-    ${RTCLAW_ROOT}/claw/services/ota/ota_service.c
 )
 
-# --- rt-claw tools ---
+# --- rt-claw tools (first-stage subset) ---
 target_sources(app PRIVATE
     ${RTCLAW_ROOT}/claw/services/tools/tools.c
-    ${RTCLAW_ROOT}/claw/services/tools/lcd.c
-    ${RTCLAW_ROOT}/claw/services/tools/audio.c
-    ${RTCLAW_ROOT}/claw/services/tools/sched.c
     ${RTCLAW_ROOT}/claw/services/tools/system.c
     ${RTCLAW_ROOT}/claw/services/tools/net.c
+    ${RTCLAW_ROOT}/claw/services/tools/sched.c
+    ${RTCLAW_ROOT}/claw/services/tools/lcd.c
+    ${RTCLAW_ROOT}/claw/services/tools/audio.c
     ${RTCLAW_ROOT}/claw/services/tools/ota.c
 )
 
-# --- rt-claw shell ---
+# --- IM stubs (Feishu/Telegram compiled but feature-disabled) ---
+target_sources(app PRIVATE
+    ${RTCLAW_ROOT}/claw/services/im/im_util.c
+    ${RTCLAW_ROOT}/claw/services/im/feishu.c
+    ${RTCLAW_ROOT}/claw/services/im/telegram.c
+)
+
+# --- Swarm + OTA (compiled but feature-disabled) ---
+target_sources(app PRIVATE
+    ${RTCLAW_ROOT}/claw/services/swarm/swarm.c
+    ${RTCLAW_ROOT}/claw/services/ota/ota_service.c
+    ${RTCLAW_ROOT}/platform/linux/ota_stub.c
+)
+
+# --- Shell ---
 target_sources(app PRIVATE
     ${RTCLAW_ROOT}/claw/shell/shell_commands.c
     ${RTCLAW_ROOT}/claw/shell/shell_history.c
 )
-
-# --- OTA platform stub (non-ESP, non-Linux) ---
-target_sources(app PRIVATE
-    ${RTCLAW_ROOT}/platform/linux/ota_stub.c
-)
-
-# Espressif-specific drivers excluded: SSD1306, ES8311, WiFi
-# (not applicable on Zephyr platforms)
 
 # --- OSAL Zephyr backend ---
 target_sources(app PRIVATE
