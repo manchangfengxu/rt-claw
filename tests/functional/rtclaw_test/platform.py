@@ -129,12 +129,57 @@ def _resolve_linux() -> PlatformConfig:
     )
 
 
+def _resolve_zephyr_cortex_a9() -> PlatformConfig:
+    elf = os.path.join(BUILD_DIR, "zephyr-qemu_cortex_a9", "zephyr",
+                       "zephyr", "zephyr.elf")
+    dtb = os.path.join(PROJECT_ROOT, "vendor", "os", "zephyr", "boards",
+                       "qemu", "cortex_a9", "fdt-zynq7000s.dtb")
+    return PlatformConfig(
+        name="zephyr-cortex-a9-qemu",
+        qemu_bin="qemu-system-aarch64",
+        boot_marker="RT-Claw",
+        shell_prompt="rt-claw>",
+        boot_timeout=15,
+        shell_timeout=10,
+        has_shell=True,
+        flash_path=elf,
+        extra_files={"dtb": dtb},
+        qemu_args=[
+            "-machine", "arm-generic-fdt-7series",
+            "-nographic",
+            "-nic", "user",
+        ],
+    )
+
+
+def _resolve_zephyr_cortex_m3() -> PlatformConfig:
+    elf = os.path.join(BUILD_DIR, "zephyr-qemu_cortex_m3", "zephyr",
+                       "zephyr", "zephyr.elf")
+    return PlatformConfig(
+        name="zephyr-cortex-m3-qemu",
+        qemu_bin="qemu-system-arm",
+        boot_marker="RT-Claw",
+        shell_prompt="rt-claw>",
+        boot_timeout=15,
+        shell_timeout=10,
+        has_shell=True,
+        flash_path=elf,
+        qemu_args=[
+            "-cpu", "cortex-m3",
+            "-machine", "lm3s6965evb",
+            "-nographic",
+        ],
+    )
+
+
 _PLATFORM_MAP = {
     "esp32c3-qemu": _resolve_esp32c3,
     "esp32s3-qemu": _resolve_esp32s3,
     "vexpress-a9-qemu": _resolve_vexpress_a9,
     "zynq-a9-qemu": _resolve_zynq_a9,
     "linux": _resolve_linux,
+    "zephyr-cortex-a9-qemu": _resolve_zephyr_cortex_a9,
+    "zephyr-cortex-m3-qemu": _resolve_zephyr_cortex_m3,
 }
 
 
@@ -216,6 +261,14 @@ def build_qemu_command(config: PlatformConfig,
             cmd += ["-sd", sd_path]
 
     elif config.name.startswith("zynq"):
+        cmd += ["-kernel", flash_path]
+
+    elif config.name == "zephyr-cortex-a9-qemu":
+        dtb = config.extra_files.get("dtb", "")
+        cmd += ["-dtb", dtb,
+                "-device", f"loader,file={flash_path},cpu-num=0"]
+
+    elif config.name == "zephyr-cortex-m3-qemu":
         cmd += ["-kernel", flash_path]
 
     return cmd

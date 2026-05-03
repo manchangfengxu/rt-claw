@@ -21,6 +21,9 @@ build/
 *.pyc
 __pycache__/
 
+# Zephyr west workspace metadata (modules are committed as submodules)
+vendor/os/.west/
+
 # ESP-IDF
 sdkconfig
 sdkconfig.old

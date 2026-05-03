@@ -418,6 +418,26 @@ void net_print_ipinfo(void)
     }
 }
 
+#elif defined(CLAW_PLATFORM_ZEPHYR)
+
+/*
+ * Zephyr networking: DHCP and interface management are handled by the
+ * Zephyr kernel and prj.conf. The OSAL net service just reports status.
+ * No Zephyr headers here — claw/services/ depends only on OSAL.
+ */
+
+static claw_err_t net_platform_init(struct net_service_ctx *ctx)
+{
+    (void)ctx;
+    CLAW_LOGI(TAG, "Zephyr networking initialized (DHCP via Kconfig)");
+    return CLAW_OK;
+}
+
+void net_print_ipinfo(void)
+{
+    claw_printf("  (Zephyr: IP managed by kernel, see Zephyr shell)\n");
+}
+
 #else /* unknown platform */
 
 #include <stdio.h>

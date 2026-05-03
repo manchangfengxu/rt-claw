@@ -38,6 +38,11 @@ help:
 	@echo "  make build-zynq-a9-qemu         Build QEMU Zynq-A9"
 	@echo "  make run-zynq-a9-qemu           Build + launch Zynq-A9"
 	@echo ""
+	@echo "Zephyr (board = qemu_cortex_m3 | qemu_cortex_a9):"
+	@echo "  make build-zephyr-cortex-m3-qemu  Build Zephyr Cortex-M3 QEMU"
+	@echo "  make run-zephyr-cortex-m3-qemu    Build + launch Cortex-M3 QEMU"
+	@echo "  make build-zephyr-cortex-a9-qemu  Build Zephyr Cortex-A9 (Xilinx QEMU)"
+	@echo ""
 	@echo "Linux native:"
 	@echo "  make build-linux                Build Linux native"
 	@echo "  make run-linux                  Build + run directly"
@@ -153,6 +158,104 @@ run-zynq-a9-qemu: build-zynq-a9-qemu
 test-smoke-zynq: build-zynq-a9-qemu
 	RTCLAW_TEST_PLATFORM=zynq-a9-qemu python3 -m unittest discover \
 		-s tests/functional -p 'test_boot.py' -v
+
+# --- Zephyr targets ---
+# rt-claw sources are compiled directly within Zephyr CMake.
+# Prerequisite: Zephyr SDK installed
+#
+# Build: CMake configure (with ZEPHYR_MODULES) → ninja → zephyr.elf
+# Board: qemu_cortex_m3 (standard QEMU, lm3s6965evb machine)
+
+ZEPHYR_BASE_DIR  := $(PROJECT_ROOT)/vendor/os/zephyr
+ZEPHYR_APP_DIR   := $(PROJECT_ROOT)/platform/zephyr
+ZEPHYR_MODULES   := $(PROJECT_ROOT)/vendor/os/modules/hal/cmsis;$(PROJECT_ROOT)/vendor/os/modules/hal/cmsis_6;$(PROJECT_ROOT)/vendor/os/modules/crypto/mbedtls;$(PROJECT_ROOT)/vendor/os/modules/crypto/tf-psa-crypto
+
+# Helper: build a Zephyr board (usage: _zephyr-build BOARD=qemu_cortex_m3)
+ZEPHYR_BOARD     ?= qemu_cortex_m3
+ZEPHYR_BUILD_DIR  = $(BUILD_DIR)/zephyr-$(ZEPHYR_BOARD)
+
+define zephyr-configure
+	@mkdir -p $(ZEPHYR_BUILD_DIR)/zephyr
+	@if [ ! -f $(ZEPHYR_BUILD_DIR)/zephyr/CMakeCache.txt ]; then \
+		echo "=== Zephyr CMake configure ($(ZEPHYR_BOARD)) ==="; \
+		ZEPHYR_BASE=$(ZEPHYR_BASE_DIR) \
+		ZEPHYR_MODULES="$(ZEPHYR_MODULES)" \
+		cmake \
+			-B $(ZEPHYR_BUILD_DIR)/zephyr \
+			-S $(ZEPHYR_APP_DIR) \
+			-DBOARD=$(ZEPHYR_BOARD) \
+			-DCONF_FILE=$(ZEPHYR_APP_DIR)/boards/$(ZEPHYR_BOARD)/prj.conf \
+			-DDTC_OVERLAY_FILE=$(ZEPHYR_APP_DIR)/boards/$(ZEPHYR_BOARD)/app.overlay \
+			-GNinja; \
+	fi
+endef
+
+.PHONY: build-zephyr-cortex-m3-qemu
+build-zephyr-cortex-m3-qemu: ZEPHYR_BOARD = qemu_cortex_m3
+build-zephyr-cortex-m3-qemu:
+	$(call zephyr-configure)
+	@echo "=== Zephyr firmware build ==="
+	ZEPHYR_BASE=$(ZEPHYR_BASE_DIR) cmake --build $(ZEPHYR_BUILD_DIR)/zephyr
+	@echo "Output: $(ZEPHYR_BUILD_DIR)/zephyr/zephyr/zephyr.elf"
+
+.PHONY: run-zephyr-cortex-m3-qemu
+run-zephyr-cortex-m3-qemu: build-zephyr-cortex-m3-qemu
+	@if [ "$(GDB)" = "1" ]; then \
+		echo "Starting QEMU in debug mode (GDB port 1234)..."; \
+	fi
+	qemu-system-arm \
+		-cpu cortex-m3 \
+		-machine lm3s6965evb \
+		-nographic \
+		-kernel $(BUILD_DIR)/zephyr-qemu_cortex_m3/zephyr/zephyr/zephyr.elf \
+		$(if $(filter 1,$(GDB)),-S -s)
+
+.PHONY: build-zephyr-cortex-a9-qemu
+build-zephyr-cortex-a9-qemu: ZEPHYR_BOARD = qemu_cortex_a9
+build-zephyr-cortex-a9-qemu:
+	$(call zephyr-configure)
+	@echo "=== Zephyr firmware build ==="
+	ZEPHYR_BASE=$(ZEPHYR_BASE_DIR) cmake --build $(ZEPHYR_BUILD_DIR)/zephyr
+	@if [ ! -f $(ZEPHYR_BUILD_DIR)/flash.bin ]; then \
+		dd if=/dev/zero of=$(ZEPHYR_BUILD_DIR)/flash.bin bs=1M count=1 2>/dev/null; \
+		echo "Created flash.bin (1MB pflash image)"; \
+	fi
+	@echo "Output: $(ZEPHYR_BUILD_DIR)/zephyr/zephyr/zephyr.elf"
+
+ZEPHYR_A9_BOARD_DIR := $(ZEPHYR_BASE_DIR)/boards/qemu/cortex_a9
+QEMU_XILINX         := qemu-system-aarch64
+
+.PHONY: run-zephyr-cortex-a9-qemu
+run-zephyr-cortex-a9-qemu: build-zephyr-cortex-a9-qemu
+	@command -v $(QEMU_XILINX) >/dev/null 2>&1 || \
+		{ echo "ERROR: $(QEMU_XILINX) not found."; \
+		  echo "Zephyr qemu_cortex_a9 requires Xilinx QEMU fork with"; \
+		  echo "  -machine arm-generic-fdt-7series support."; \
+		  echo "Install from: https://github.com/Xilinx/qemu"; \
+		  echo "Or set QEMU_BIN_PATH to the Xilinx QEMU directory."; \
+		  exit 1; }
+	@if [ "$(GDB)" = "1" ]; then \
+		echo "Starting QEMU in debug mode (GDB port 1234)..."; \
+	fi
+	$(QEMU_XILINX) \
+		-machine arm-generic-fdt-7series \
+		-dtb $(ZEPHYR_A9_BOARD_DIR)/fdt-zynq7000s.dtb \
+		-device loader,file=$(BUILD_DIR)/zephyr-qemu_cortex_a9/zephyr/zephyr/zephyr.elf,cpu-num=0 \
+		-nographic \
+		-nic user \
+		-drive if=pflash,file=$(BUILD_DIR)/zephyr-qemu_cortex_a9/flash.bin,format=raw \
+		$(if $(filter 1,$(GDB)),-S -s)
+
+.PHONY: test-smoke-zephyr-cortex-a9
+test-smoke-zephyr-cortex-a9: build-zephyr-cortex-a9-qemu
+	RTCLAW_TEST_PLATFORM=zephyr-cortex-a9-qemu python3 -m unittest discover \
+		-s tests/functional -p 'test_boot.py' -v
+
+.PHONY: test-smoke-zephyr
+test-smoke-zephyr: build-zephyr-cortex-m3-qemu
+	RTCLAW_TEST_PLATFORM=zephyr-cortex-m3-qemu python3 -m unittest discover \
+		-s tests/functional -p 'test_boot.py' -v
+
 
 # --- ESP32-C3 unified targets ---
 # Prerequisite: source $$HOME/esp/esp-idf/export.sh
