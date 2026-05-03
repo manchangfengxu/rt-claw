@@ -22,7 +22,7 @@ else
     echo "Zephyr SDK installed at $ZEPHYR_SDK_DIR"
 fi
 
-pip3 install --quiet pykwalify
+pip3 install --quiet pykwalify pyelftools
 
 # --- Xilinx QEMU (for qemu_cortex_a9 runtime testing) ---
 XILINX_QEMU_DIR="$HOME/xilinx-qemu"

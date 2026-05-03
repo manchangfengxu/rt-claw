@@ -4,7 +4,7 @@
  *
  * OSAL Key-Value storage for Zephyr RTOS.
  * Uses Zephyr Settings subsystem over NVS backend.
- * Reads use settings_load_subtree() with a registered handler.
+ * Reads use settings_load_subtree_direct() for one-shot lookups.
  */
 
 #include "osal/claw_kv.h"
@@ -22,8 +22,9 @@ LOG_MODULE_REGISTER(claw_kv, LOG_LEVEL_INF);
 #define KV_PATH_MAX  64
 
 static int s_initialized;
+static struct claw_mutex *s_kv_lock;
 
-/* --- Settings handler for reads --- */
+/* --- one-shot read context --- */
 
 struct kv_read_ctx {
     void   *dest;
@@ -32,36 +33,29 @@ struct kv_read_ctx {
     int     found;
 };
 
-static struct kv_read_ctx s_read_ctx;
-
-static int kv_settings_set(const char *key, size_t len,
-                            settings_read_cb read_cb, void *cb_arg)
+static int kv_direct_load_cb(const char *key, size_t len,
+                              settings_read_cb read_cb, void *cb_arg,
+                              void *param)
 {
-    (void)key;
+    struct kv_read_ctx *ctx = param;
 
-    if (!s_read_ctx.dest || s_read_ctx.dest_size == 0) {
-        return -EINVAL;
-    }
+    (void)key;
 
     size_t to_read = len;
 
-    if (to_read > s_read_ctx.dest_size) {
-        to_read = s_read_ctx.dest_size;
+    if (to_read > ctx->dest_size) {
+        to_read = ctx->dest_size;
     }
 
-    int rc = read_cb(cb_arg, s_read_ctx.dest, to_read);
+    int rc = read_cb(cb_arg, ctx->dest, to_read);
 
     if (rc >= 0) {
-        s_read_ctx.read_len = (size_t)rc;
-        s_read_ctx.found = 1;
+        ctx->read_len = (size_t)rc;
+        ctx->found = 1;
     }
 
     return 0;
 }
-
-SETTINGS_STATIC_HANDLER_DEFINE(
-    claw_kv, "", NULL, kv_settings_set, NULL, NULL
-);
 
 /* --- helpers --- */
 
@@ -79,18 +73,26 @@ static int build_path(char *out, size_t out_size,
 static int kv_read(const char *path, void *data, size_t size,
                     size_t *out_len)
 {
-    memset(&s_read_ctx, 0, sizeof(s_read_ctx));
-    s_read_ctx.dest      = data;
-    s_read_ctx.dest_size = size;
+    struct kv_read_ctx ctx = {
+        .dest      = data,
+        .dest_size = size,
+        .read_len  = 0,
+        .found     = 0,
+    };
 
-    int ret = settings_load_subtree(path);
+    claw_mutex_lock(s_kv_lock, CLAW_WAIT_FOREVER);
 
-    if (ret < 0 || !s_read_ctx.found) {
+    int ret = settings_load_subtree_direct(path,
+                                            kv_direct_load_cb, &ctx);
+
+    claw_mutex_unlock(s_kv_lock);
+
+    if (ret < 0 || !ctx.found) {
         return CLAW_ERR_NOENT;
     }
 
     if (out_len) {
-        *out_len = s_read_ctx.read_len;
+        *out_len = ctx.read_len;
     }
     return CLAW_OK;
 }
@@ -103,16 +105,17 @@ int claw_kv_init(void)
         return CLAW_OK;
     }
 
+    s_kv_lock = claw_mutex_create("kv_lock");
+    if (!s_kv_lock) {
+        LOG_ERR("failed to create KV mutex");
+        return CLAW_ERR_NOMEM;
+    }
+
     int ret = settings_subsys_init();
 
     if (ret) {
         LOG_ERR("settings_subsys_init failed: %d", ret);
         return CLAW_ERROR;
-    }
-
-    ret = settings_load();
-    if (ret) {
-        LOG_WRN("settings_load failed: %d (continuing)", ret);
     }
 
     s_initialized = 1;
