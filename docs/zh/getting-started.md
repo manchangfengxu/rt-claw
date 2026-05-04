@@ -271,12 +271,13 @@ git submodule update --init --recursive
 
 ```bash
 export RTCLAW_AI_API_KEY='sk-...'
-export RTCLAW_AI_API_URL='https://api.anthropic.com/v1/messages'
+# TLS 尚未默认启用，通过 api-proxy 使用 HTTP
+export RTCLAW_AI_API_URL='http://10.0.2.2:8888/v1/messages'
 export RTCLAW_AI_MODEL='claude-sonnet-4-6'
 
+# 在另一个终端启动代理：python3 scripts/api-proxy.py
 make build-zephyr-cortex-m3-qemu
 make run-zephyr-cortex-m3-qemu
-make run-zephyr-cortex-m3-qemu GDB=1   # 调试模式（GDB 端口 1234）
 ```
 
 ### Cortex-A9（需要 Xilinx QEMU）

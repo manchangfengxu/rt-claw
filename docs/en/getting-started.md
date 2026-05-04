@@ -287,9 +287,11 @@ prebuilt `.a` files).
 
 ```bash
 export RTCLAW_AI_API_KEY='sk-...'
-export RTCLAW_AI_API_URL='https://api.anthropic.com/v1/messages'
+# TLS not yet enabled by default — use api-proxy for HTTPS
+export RTCLAW_AI_API_URL='http://10.0.2.2:8888/v1/messages'
 export RTCLAW_AI_MODEL='claude-sonnet-4-6'
 
+# Start proxy in another terminal: python3 scripts/api-proxy.py
 make build-zephyr-cortex-a9-qemu
 make run-zephyr-cortex-a9-qemu
 ```
