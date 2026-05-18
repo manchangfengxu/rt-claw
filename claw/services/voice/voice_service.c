@@ -359,14 +359,22 @@ static void voice_process_end_capture(struct voice_service_ctx *ctx)
 
     voice_set_state(ctx, VOICE_ENDPOINT_SYNTHESIZING, NULL);
     rc = voice_run_tts_stream(ctx, &mime_type, &stream);
-    if (rc == CLAW_OK) {
+    if (rc == CLAW_OK && stream.emitted) {
         rc = voice_endpoint_send_tts_done();
         if (rc != CLAW_OK) {
             voice_fail(ctx, "tts playback failed");
         }
         return;
     }
-    if (stream.emitted) {
+    if (rc == CLAW_OK && !stream.emitted) {
+        /*
+         * Provider reported success but emitted no audio: avoid wedging
+         * in SYNTHESIZING by falling back to the buffered path.
+         */
+        CLAW_LOGW(TAG, "streaming TTS succeeded with zero chunks; "
+                  "falling back to buffered synthesis");
+    }
+    if (rc != CLAW_OK && stream.emitted) {
         CLAW_LOGE(TAG, "streaming TTS failed after audio output: %s",
                   claw_strerror(rc));
         (void)voice_endpoint_send_tts_done();
@@ -573,20 +581,21 @@ static void voice_worker(void *arg)
 
 claw_err_t voice_config_set_enabled(int enabled)
 {
-    int cfg_enabled;
+    struct voice_endpoint_event sync_event;
 
     voice_cfg_lock(&s_voice);
     s_voice.cfg.enabled = enabled ? 1 : 0;
-    cfg_enabled = s_voice.cfg.enabled;
     voice_cfg_unlock(&s_voice);
 
-    if (!cfg_enabled) {
-        voice_abort_turn(&s_voice);
-        s_voice.state = VOICE_ENDPOINT_DISABLED;
-    } else if (s_voice.active_session_id >= 0) {
-        s_voice.state = VOICE_ENDPOINT_SESSION_READY;
-    } else {
-        s_voice.state = VOICE_ENDPOINT_IDLE;
+    /*
+     * Route the state transition through the worker so that turn cleanup and
+     * state writes happen on the same thread that owns stt_session.
+     */
+    if (s_voice.mq) {
+        memset(&sync_event, 0, sizeof(sync_event));
+        sync_event.type = VOICE_ENDPOINT_EVENT_CANCEL;
+        sync_event.session_id = s_voice.active_session_id;
+        (void)voice_submit_event(&sync_event);
     }
     return CLAW_OK;
 }
@@ -855,11 +864,15 @@ static void voice_svc_stop(struct claw_service *svc)
         container_of(svc, struct voice_service_ctx, base);
     struct voice_endpoint_event event;
 
-    voice_abort_turn(ctx);
+    /*
+     * Stop the worker first so it can no longer touch stt_session or the
+     * message queue while we tear them down.
+     */
     if (ctx->worker) {
         claw_thread_delete(ctx->worker);
         ctx->worker = NULL;
     }
+    voice_abort_turn(ctx);
     /* Drain any queued events so that owned audio buffers are freed. */
     if (ctx->mq) {
         while (claw_mq_recv(ctx->mq, &event, sizeof(event),
