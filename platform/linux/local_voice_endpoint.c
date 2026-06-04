@@ -126,11 +126,24 @@ static int local_voice_spawn_capture(const char *device,
     }
     if (pid == 0) {
         int devnull = open("/dev/null", O_WRONLY);
+        int max_fd;
+        int fd;
 
         dup2(pipefd[1], STDOUT_FILENO);
         if (devnull >= 0) {
             dup2(devnull, STDERR_FILENO);
             close(devnull);
+        }
+        /* Close inherited fds beyond stderr to avoid leaking CURL sockets
+           and other parent resources into the child process. */
+        max_fd = (int)sysconf(_SC_OPEN_MAX);
+        if (max_fd <= 0 || max_fd > 4096) {
+            max_fd = 4096;
+        }
+        for (fd = 3; fd < max_fd; fd++) {
+            if (fd != pipefd[1]) {
+                close(fd);
+            }
         }
         close(pipefd[0]);
         close(pipefd[1]);
@@ -230,11 +243,22 @@ static int local_voice_spawn_playback(const char *device,
     }
     if (pid == 0) {
         int devnull = open("/dev/null", O_WRONLY);
+        int max_fd;
+        int fd;
 
         dup2(pipefd[0], STDIN_FILENO);
         if (devnull >= 0) {
             dup2(devnull, STDERR_FILENO);
             close(devnull);
+        }
+        max_fd = (int)sysconf(_SC_OPEN_MAX);
+        if (max_fd <= 0 || max_fd > 4096) {
+            max_fd = 4096;
+        }
+        for (fd = 3; fd < max_fd; fd++) {
+            if (fd != pipefd[0]) {
+                close(fd);
+            }
         }
         close(pipefd[0]);
         close(pipefd[1]);

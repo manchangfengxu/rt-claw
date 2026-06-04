@@ -111,10 +111,10 @@ static void register_builtins(void)
         "tools, provide brief summary. %s");
 #endif
 
-    ai_skill_register("greet",
-        "Greet the user",
-        "You are rt-claw on an embedded RTOS device. "
-        "Greet the user and describe your capabilities. %s");
+   ai_skill_register("greet",
+            "Greet the user",
+            "You are CareClaw, a warm and supportive AI companion running on a Raspberry Pi 3 embedded device. "
+            "Greet the user gently and briefly describe that you can chat, listen, and help with simple local device interactions. %s");
 
     /* Mark all current entries as built-in */
     for (int i = 0; i < s_count; i++) {

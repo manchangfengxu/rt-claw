@@ -110,11 +110,21 @@ int platform_expression_launch(void)
     }
     if (pid == 0) {
         int devnull = open("/dev/null", O_WRONLY);
+        int max_fd;
+        int fd;
 
         if (devnull >= 0) {
             dup2(devnull, STDOUT_FILENO);
-            dup2(devnull, STDERR_FILENO);
             close(devnull);
+        }
+        /* Close inherited fds beyond stderr so the Python window
+           does not hold CURL sockets or other parent resources. */
+        max_fd = (int)sysconf(_SC_OPEN_MAX);
+        if (max_fd <= 0 || max_fd > 4096) {
+            max_fd = 4096;
+        }
+        for (fd = 3; fd < max_fd; fd++) {
+            close(fd);
         }
         execlp("python3", "python3", EXPR_WINDOW_SCRIPT,
                "--assets", EXPR_ASSETS_DIR,
