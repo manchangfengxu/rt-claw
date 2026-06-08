@@ -555,6 +555,7 @@ int local_voice_endpoint_capture_start(void)
     int err;
 
     if (!voice_config_get_enabled()) {
+        CLAW_LOGW(TAG, "capture_start: voice not enabled");
         return CLAW_ERR_STATE;
     }
     if (!s_local_voice.running) {
@@ -735,8 +736,10 @@ int local_voice_endpoint_capturing(void)
 int local_voice_endpoint_capture_toggle(void)
 {
     if (local_voice_endpoint_capturing()) {
+        CLAW_LOGI(TAG, "capture_toggle: stopping");
         return local_voice_endpoint_capture_stop();
     }
+    CLAW_LOGI(TAG, "capture_toggle: starting");
     return local_voice_endpoint_capture_start();
 }
 

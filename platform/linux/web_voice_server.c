@@ -345,6 +345,12 @@ static claw_err_t send_tts_audio(int session_id,
         cJSON_AddStringToObject(root, "audio_base64", audio_base64);
     }
     ret = web_voice_send_sse_json(root) == 0 ? CLAW_OK : CLAW_ERR_NOENT;
+    CLAW_LOGI(TAG, "send_tts_audio: session=%d data=%u base64=%u mime=%s ret=%s",
+              session_id,
+              (unsigned int)data_len,
+              audio_base64 ? (unsigned int)strlen(audio_base64) : 0,
+              mime_type ? mime_type : "(null)",
+              ret == CLAW_OK ? "ok" : "fail");
     free(audio_base64);
     cJSON_Delete(root);
     return ret;
@@ -361,6 +367,8 @@ static claw_err_t send_tts_done(int session_id)
     cJSON_AddStringToObject(root, "type", "tts_done");
     cJSON_AddNumberToObject(root, "session_id", session_id);
     ret = web_voice_send_sse_json(root) == 0 ? CLAW_OK : CLAW_ERR_NOENT;
+    CLAW_LOGI(TAG, "send_tts_done: session=%d ret=%s",
+              session_id, ret == CLAW_OK ? "ok" : "fail");
     cJSON_Delete(root);
     return ret;
 }

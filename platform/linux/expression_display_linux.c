@@ -17,7 +17,7 @@
 #define TAG "expr_disp"
 
 #ifndef CONFIG_RTCLAW_EXPRESSION_IPC
-#define CONFIG_RTCLAW_EXPRESSION_IPC "/run/rtclaw-expression.sock"
+#define CONFIG_RTCLAW_EXPRESSION_IPC "/tmp/rtclaw-expression.sock"
 #endif
 
 #define EXPR_WINDOW_SCRIPT "platform/linux/expression_window.py"
@@ -99,8 +99,13 @@ int platform_expression_launch(void)
     pid_t pid;
 
     if (s_window_pid > 0) {
+        CLAW_LOGI(TAG, "expression window already running (pid=%d)",
+                  s_window_pid);
         return CLAW_OK;
     }
+
+    CLAW_LOGI(TAG, "launching expression window: script=%s assets=%s",
+              EXPR_WINDOW_SCRIPT, EXPR_ASSETS_DIR);
 
     pid = fork();
     if (pid < 0) {
@@ -115,6 +120,7 @@ int platform_expression_launch(void)
 
         if (devnull >= 0) {
             dup2(devnull, STDOUT_FILENO);
+            dup2(STDERR_FILENO, STDOUT_FILENO);
             close(devnull);
         }
         /* Close inherited fds beyond stderr so the Python window
@@ -129,7 +135,7 @@ int platform_expression_launch(void)
         execlp("python3", "python3", EXPR_WINDOW_SCRIPT,
                "--assets", EXPR_ASSETS_DIR,
                "--ipc", CONFIG_RTCLAW_EXPRESSION_IPC,
-               "--fullscreen", NULL);
+               NULL);
         _exit(127);
     }
 

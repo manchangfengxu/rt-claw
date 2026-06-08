@@ -144,15 +144,22 @@ claw_err_t voice_endpoint_send_tts_audio(const void *data,
     claw_err_t ret;
 
     if (endpoint_lock() != CLAW_OK) {
+        CLAW_LOGE(TAG, "send_tts_audio: lock failed");
         return CLAW_ERR_STATE;
     }
     if (!s_endpoint.attached || !s_endpoint.backend.send_tts_audio) {
+        CLAW_LOGW(TAG, "send_tts_audio: no backend (attached=%d)",
+                  s_endpoint.attached);
         endpoint_unlock();
         return CLAW_ERR_NOENT;
     }
     ret = s_endpoint.backend.send_tts_audio(s_endpoint.session_id,
                                             data, data_len, mime_type);
     endpoint_unlock();
+    if (ret != CLAW_OK) {
+        CLAW_LOGE(TAG, "send_tts_audio: backend failed ret=%s",
+                  claw_strerror(ret));
+    }
     return ret;
 }
 

@@ -98,7 +98,7 @@ option('voice_button_active_low', type: 'boolean', value: true,
     description: 'GPIO button active-low (true=press pulls low)')
 option('voice_button_debounce_ms', type: 'integer', value: 50, min: 10,
     description: 'GPIO button debounce interval in milliseconds')
-option('expression_ipc_path', type: 'string', value: '/run/rtclaw-expression.sock',
+option('expression_ipc_path', type: 'string', value: '/tmp/rtclaw-expression.sock',
     description: 'Unix domain socket path for expression IPC')
 
 option('tool_expression', type: 'boolean', value: false,

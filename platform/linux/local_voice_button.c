@@ -109,8 +109,15 @@ int local_voice_button_init(void)
     int ret;
 
     if (s_button.chip_fd >= 0) {
+        CLAW_LOGI(TAG, "already initialized");
         return CLAW_OK;
     }
+
+    CLAW_LOGI(TAG, "opening %s line %d (active_low=%d debounce=%dms)",
+              CONFIG_RTCLAW_VOICE_BUTTON_GPIOCHIP,
+              CONFIG_RTCLAW_VOICE_BUTTON_LINE,
+              CONFIG_RTCLAW_VOICE_BUTTON_ACTIVE_LOW,
+              CONFIG_RTCLAW_VOICE_BUTTON_DEBOUNCE_MS);
 
     s_button.chip_fd = open(CONFIG_RTCLAW_VOICE_BUTTON_GPIOCHIP, O_RDONLY);
     if (s_button.chip_fd < 0) {

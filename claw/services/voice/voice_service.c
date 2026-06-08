@@ -200,9 +200,14 @@ static claw_err_t voice_tts_send_chunk(const void *data,
     if (stream->voice->state != VOICE_ENDPOINT_PLAYING) {
         voice_set_state(stream->voice, VOICE_ENDPOINT_PLAYING, NULL);
     }
+    CLAW_LOGI(TAG, "tts chunk: %u bytes mime=%s",
+              (unsigned int)data_len,
+              mime_type ? mime_type : "(null)");
     rc = voice_endpoint_send_tts_audio(data, data_len, mime_type);
     if (rc == CLAW_OK) {
         stream->emitted = 1;
+    } else {
+        CLAW_LOGE(TAG, "tts chunk send failed: %s", claw_strerror(rc));
     }
     return rc;
 }
@@ -361,7 +366,10 @@ static void voice_process_end_capture(struct voice_service_ctx *ctx)
     (void)voice_endpoint_send_assistant_text(ctx->reply);
 
     voice_set_state(ctx, VOICE_ENDPOINT_SYNTHESIZING, NULL);
+    CLAW_LOGI(TAG, "attempting streaming TTS");
     rc = voice_run_tts_stream(ctx, &mime_type, &stream);
+    CLAW_LOGI(TAG, "streaming TTS result: rc=%s emitted=%d",
+              claw_strerror(rc), stream.emitted);
     if (rc == CLAW_OK && stream.emitted) {
         rc = voice_endpoint_send_tts_done();
         if (rc != CLAW_OK) {
@@ -387,6 +395,7 @@ static void voice_process_end_capture(struct voice_service_ctx *ctx)
 
     CLAW_LOGW(TAG, "streaming TTS failed, falling back: %s",
               claw_strerror(rc));
+    CLAW_LOGI(TAG, "attempting buffered TTS");
     rc = voice_run_tts_buffered(ctx, &mime_type,
                                 &audio_out, &audio_out_len);
     if (rc == CLAW_ERR_NOMEM) {

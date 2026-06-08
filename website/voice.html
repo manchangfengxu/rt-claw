@@ -148,6 +148,8 @@ let currentAudio = null;
 let pendingPlaybackUrls = [];
 let ttsStreamDone = false;
 let playbackDoneSent = false;
+let ttsChunkBuffers = [];
+let ttsChunkTotalBytes = 0;
 
 function logLine(message) {
     const now = new Date().toLocaleTimeString();
@@ -259,7 +261,13 @@ async function startMicCapture() {
         queueChunkUpload(pcm.buffer.slice(0));
     };
     mediaSource.connect(processor);
-    processor.connect(audioContext.destination);
+    /* ScriptProcessorNode needs a path to audioContext.destination to fire
+     * onaudioprocess.  Route through a muted gain node so mic audio does
+     * NOT play through the speakers (avoids echo / feedback). */
+    var muteGain = audioContext.createGain();
+    muteGain.gain.value = 0;
+    processor.connect(muteGain);
+    muteGain.connect(audioContext.destination);
 
     await postJsonEvent('start_capture', {
         sample_rate: 16000,
@@ -306,6 +314,10 @@ function maybeFinishPlayback() {
     if (!ttsStreamDone) {
         return;
     }
+    if (ttsChunkBuffers.length > 0) {
+        assembleAndPlayTtsAudio();
+        return;
+    }
     if (playbackDoneSent) {
         return;
     }
@@ -324,7 +336,6 @@ function processPlaybackQueue() {
         return;
     }
     const url = playbackQueue.shift();
-    pendingPlaybackUrls.push(url);
     playbackActive = true;
     const audio = new Audio(url);
     currentAudio = audio;
@@ -338,8 +349,8 @@ function processPlaybackQueue() {
         }
         processPlaybackQueue();
     };
-    audio.onerror = function () {
-        logLine('audio playback failed');
+    audio.onerror = function (e) {
+        logLine('audio playback error: ' + (audio.error ? audio.error.code + ' ' + audio.error.message : 'unknown'));
         currentAudio = null;
         playbackActive = false;
         URL.revokeObjectURL(url);
@@ -381,19 +392,40 @@ function resetPlaybackState() {
     pendingPlaybackUrls = [];
     ttsStreamDone = false;
     playbackDoneSent = false;
+    ttsChunkBuffers = [];
+    ttsChunkTotalBytes = 0;
 }
 
-function playAudioMessage(msg) {
+function queueAudioChunk(msg) {
     if (!msg.audio_base64) {
-        if (msg.text) {
-            assistantEl.textContent = msg.text;
-        }
+        logLine('tts_audio: no audio_base64 in payload');
         return;
     }
-    const bytes = decodeBase64ToBytes(msg.audio_base64);
-    const blob = new Blob([bytes], { type: msg.mime_type || 'application/octet-stream' });
-    const url = URL.createObjectURL(blob);
+    var bytes = decodeBase64ToBytes(msg.audio_base64);
+    ttsChunkBuffers.push(bytes);
+    ttsChunkTotalBytes += bytes.length;
+    logLine('tts_audio: queued chunk ' + bytes.length +
+            ' bytes, total=' + ttsChunkTotalBytes);
+}
+
+function assembleAndPlayTtsAudio() {
+    if (ttsChunkBuffers.length === 0) {
+        return;
+    }
+    var merged = new Uint8Array(ttsChunkTotalBytes);
+    var offset = 0;
+    for (var i = 0; i < ttsChunkBuffers.length; i++) {
+        merged.set(ttsChunkBuffers[i], offset);
+        offset += ttsChunkBuffers[i].length;
+    }
+    ttsChunkBuffers = [];
+    ttsChunkTotalBytes = 0;
+    var blob = new Blob([merged], { type: 'audio/wav' });
+    var url = URL.createObjectURL(blob);
     playbackQueue.push(url);
+    pendingPlaybackUrls.push(url);
+    logLine('tts_audio: assembled ' + merged.length +
+            ' bytes, starting playback');
     processPlaybackQueue();
 }
 
@@ -406,7 +438,7 @@ function handleMessage(msg) {
     if (msg.type === 'state') {
         stateEl.textContent = msg.state || 'unknown';
         logLine('state -> ' + stateEl.textContent + (msg.detail ? ' (' + msg.detail + ')' : ''));
-        if (msg.state === 'capturing' || msg.state === 'session_ready' ||
+        if (msg.state === 'capturing' ||
             msg.state === 'idle' || msg.state === 'error') {
             resetPlaybackState();
         }
@@ -426,14 +458,21 @@ function handleMessage(msg) {
         if (ttsStreamDone) {
             resetPlaybackState();
         }
-        logLine('tts payload mime=' + (msg.mime_type || '') + ' size=' + (msg.size || 0));
-        playAudioMessage(msg);
+        logLine('tts_audio: session=' + (msg.session_id || '?') +
+                ' mime=' + (msg.mime_type || 'none') +
+                ' size=' + (msg.size || 0) +
+                ' base64_len=' + (msg.audio_base64 ? msg.audio_base64.length : 0));
+        queueAudioChunk(msg);
         return;
     }
     if (msg.type === 'tts_done') {
-        logLine('tts stream done');
+        logLine('tts stream done, assembling audio');
         ttsStreamDone = true;
-        maybeFinishPlayback();
+        if (ttsChunkBuffers.length > 0) {
+            assembleAndPlayTtsAudio();
+        } else {
+            maybeFinishPlayback();
+        }
         return;
     }
     if (msg.type === 'error') {

@@ -44,21 +44,20 @@ except (ImportError, AttributeError):
 
 
 class ExpressionWindow:
-    def __init__(self, assets_dir, ipc_path, fullscreen=False):
+    def __init__(self, assets_dir, ipc_path, window_w=240, window_h=240):
         self.assets_dir = assets_dir
         self.ipc_path = ipc_path
-        self.fullscreen = fullscreen
+        self.window_w = window_w
+        self.window_h = window_h
         self.current_expression = "idle"
-        self.gif_frames = []
+        self.gif_image = None
+        self.gif_durations = []
         self.frame_index = 0
 
         self.root = tk.Tk()
         self.root.title("rt-claw Expression")
-
-        if fullscreen:
-            self.root.attributes('-fullscreen', True)
-        else:
-            self.root.geometry("320x240")
+        self.root.geometry(f"{window_w}x{window_h}")
+        self.root.resizable(False, False)
 
         self.label = tk.Label(self.root, bg='black')
         self.label.pack(expand=True, fill='both')
@@ -71,44 +70,60 @@ class ExpressionWindow:
                                            daemon=True)
         self.ipc_thread.start()
 
+    def _decode_current_frame(self):
+        """Decode only the current frame to a PhotoImage (lazy loading)."""
+        if not self.gif_image:
+            return None
+        try:
+            self.gif_image.seek(self.frame_index)
+            frame = self.gif_image.convert('RGBA')
+            frame = frame.resize((self.window_w, self.window_h), LANCZOS)
+            return ImageTk.PhotoImage(frame)
+        except Exception:
+            return None
+
     def load_expression(self, name):
-        """Load GIF file for the named expression."""
+        """Load GIF file for the named expression (lazy frame decode)."""
         path = os.path.join(self.assets_dir, f"{name}.gif")
         if not os.path.exists(path):
-            print(f"GIF not found: {path}")
+            print(f"[expr_win] GIF not found: {path}", flush=True)
             return False
 
         try:
+            if self.gif_image:
+                self.gif_image.close()
+
             self.gif_image = Image.open(path)
-            self.gif_frames = []
-
+            self.gif_durations = []
             for frame in ImageSequence.Iterator(self.gif_image):
-                frame = frame.convert('RGBA')
-                if self.fullscreen:
-                    screen_w = self.root.winfo_screenwidth()
-                    screen_h = self.root.winfo_screenheight()
-                    frame = frame.resize((screen_w, screen_h), LANCZOS)
-                else:
-                    frame = frame.resize((320, 240), LANCZOS)
-
-                self.gif_frames.append(ImageTk.PhotoImage(frame))
+                self.gif_durations.append(
+                    frame.info.get('duration', 100))
 
             self.frame_index = 0
             self.current_expression = name
+
+            photo = self._decode_current_frame()
+            if photo:
+                self._current_photo = photo
+                self.label.configure(image=photo)
+
+            print(f"[expr_win] loaded {name} "
+                  f"({len(self.gif_durations)} frames)", flush=True)
             return True
 
         except Exception as e:
-            print(f"Failed to load GIF: {e}")
+            print(f"[expr_win] Failed to load GIF: {e}", flush=True)
             return False
 
     def animate(self):
-        """Animate GIF frames."""
-        if self.gif_frames:
-            frame = self.gif_frames[self.frame_index]
-            self.label.configure(image=frame)
-            self.frame_index = (self.frame_index + 1) % len(self.gif_frames)
-
-            delay = self.gif_image.info.get('duration', 100)
+        """Animate GIF frames (lazy decode per frame)."""
+        if self.gif_image and self.gif_durations:
+            photo = self._decode_current_frame()
+            if photo:
+                self._current_photo = photo
+                self.label.configure(image=photo)
+            self.frame_index = (self.frame_index + 1) % len(self.gif_durations)
+            delay = self.gif_durations[self.frame_index]
             self.root.after(delay, self.animate)
 
     def ipc_listener(self):
@@ -121,7 +136,8 @@ class ExpressionWindow:
         sock.listen(5)
         os.chmod(self.ipc_path, 0o666)
 
-        print(f"IPC listening on {self.ipc_path}")
+        print(f"[expr_win] IPC listening on {self.ipc_path}",
+              flush=True)
 
         while True:
             try:
@@ -130,7 +146,8 @@ class ExpressionWindow:
                     data = conn.recv(64).decode('utf-8').strip()
                     if data.startswith('set '):
                         expr = data[4:].strip()
-                        print(f"Received command: set {expr}")
+                        print(f"[expr_win] IPC command: set {expr}",
+                              flush=True)
                         self.root.after(0,
                                         lambda e=expr: self.load_expression(e))
             except Exception as e:
@@ -145,18 +162,26 @@ def main():
         description='rt-claw Expression Window')
     parser.add_argument('--assets', default='assets/expressions',
                         help='Path to expression GIF assets')
-    parser.add_argument('--ipc', default='/run/rtclaw-expression.sock',
+    parser.add_argument('--ipc', default='/tmp/rtclaw-expression.sock',
                         help='Unix domain socket path')
-    parser.add_argument('--fullscreen', action='store_true',
-                        help='Run in fullscreen mode')
+    parser.add_argument('--width', type=int, default=240,
+                        help='Window width in pixels (default: 240)')
+    parser.add_argument('--height', type=int, default=240,
+                        help='Window height in pixels (default: 240)')
 
     args = parser.parse_args()
 
     if not os.path.exists(args.assets):
-        print(f"Assets directory not found: {args.assets}")
+        print(f"[expr_win] Assets directory not found: {args.assets}",
+              flush=True)
         sys.exit(1)
 
-    window = ExpressionWindow(args.assets, args.ipc, args.fullscreen)
+    print(f"[expr_win] starting  assets={args.assets} "
+          f"ipc={args.ipc}  size={args.width}x{args.height}",
+          flush=True)
+
+    window = ExpressionWindow(args.assets, args.ipc,
+                              args.width, args.height)
     window.run()
 
 
